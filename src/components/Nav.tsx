@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/", label: "Synthèse" },
   { href: "/creances", label: "Créances et devis" },
-  { href: "/fournisseurs", label: "Factures fournisseurs" },
   { href: "/depenses", label: "Dépenses" },
   { href: "/revenus", label: "Revenus" },
 ];

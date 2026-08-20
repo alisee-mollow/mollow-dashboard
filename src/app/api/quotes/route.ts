@@ -1,9 +1,9 @@
-import { getPendingQuotes } from "@/lib/finance";
+import { getOpenQuotes } from "@/lib/finance";
 import { PennylaneApiError } from "@/lib/pennylane";
 
 export async function GET() {
   try {
-    const data = await getPendingQuotes();
+    const data = await getOpenQuotes();
     return Response.json(data);
   } catch (err) {
     const status = err instanceof PennylaneApiError ? err.status : 500;

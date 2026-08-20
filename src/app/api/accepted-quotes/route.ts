@@ -1,9 +1,9 @@
-import { getUnpaidSupplierInvoices } from "@/lib/finance";
+import { getUnbilledAcceptedQuotes } from "@/lib/finance";
 import { PennylaneApiError } from "@/lib/pennylane";
 
 export async function GET() {
   try {
-    const data = await getUnpaidSupplierInvoices();
+    const data = await getUnbilledAcceptedQuotes();
     return Response.json(data);
   } catch (err) {
     const status = err instanceof PennylaneApiError ? err.status : 500;

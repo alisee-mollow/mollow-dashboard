@@ -43,15 +43,19 @@ export interface CategoryGroup {
   label: string;
 }
 
-// Enum élargi après vérification sandbox : "upcoming" observé en conditions réelles
-// (non documenté par pennylane.readme.io). Le code ne filtre pas sur ce champ,
-// uniquement sur `paid` + `draft`/`credit_note`, donc reste robuste aux valeurs
-// non listées ici.
+// Enum élargi après vérification sandbox : "upcoming", "incomplete" et "archived"
+// observés en conditions réelles (non documentés par pennylane.readme.io).
+// "incomplete" = document mal formé (parfois sans client rattaché) et "archived" =
+// facture classée sans suite (ex. note de frais mal importée) : les deux ont
+// `paid: false` sans être de vraies créances actives — voir ACTIVE_RECEIVABLE_STATUSES
+// dans src/lib/finance.ts.
 export type CustomerInvoiceStatus =
   | "paid"
   | "partially_paid"
   | "late"
   | "upcoming"
+  | "incomplete"
+  | "archived"
   | "draft"
   | "cancelled"
   | "credit_note";
@@ -72,32 +76,6 @@ export interface CustomerInvoice {
   customer: Ref | null;
 }
 
-export type SupplierInvoicePaymentStatus =
-  | "to_be_processed"
-  | "to_be_paid"
-  | "partially_paid"
-  | "payment_error"
-  | "payment_scheduled"
-  | "payment_in_progress"
-  | "payment_emitted"
-  | "payment_found"
-  | "paid_offline"
-  | "fully_paid";
-
-export interface SupplierInvoice {
-  id: number;
-  invoice_number: string;
-  label: string | null;
-  amount: string;
-  currency: string;
-  paid: boolean;
-  payment_status: SupplierInvoicePaymentStatus;
-  deadline: string | null;
-  date: string | null;
-  remaining_amount_with_tax: string | null;
-  supplier: Ref | null;
-}
-
 export type QuoteStatus = "pending" | "accepted" | "denied" | "invoiced" | "expired";
 
 export interface Quote {
@@ -113,11 +91,6 @@ export interface Quote {
 }
 
 export interface Customer {
-  id: number;
-  name: string;
-}
-
-export interface Supplier {
   id: number;
   name: string;
 }

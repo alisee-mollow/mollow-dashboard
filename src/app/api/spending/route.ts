@@ -1,9 +1,10 @@
-import { getSpendingByCategory } from "@/lib/finance";
+import { getSpendingByCategory, parseYear } from "@/lib/finance";
 import { PennylaneApiError } from "@/lib/pennylane";
+import type { NextRequest } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const data = await getSpendingByCategory();
+    const data = await getSpendingByCategory(parseYear(request.url));
     return Response.json(data);
   } catch (err) {
     const status = err instanceof PennylaneApiError ? err.status : 500;

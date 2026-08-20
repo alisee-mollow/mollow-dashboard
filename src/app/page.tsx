@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { KpiCard } from "@/components/KpiCard";
 import { RefreshButton } from "@/components/RefreshButton";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { TreasuryChart } from "@/components/TreasuryChart";
 import { InOutChart } from "@/components/InOutChart";
+import { YearSwitcher } from "@/components/YearSwitcher";
 import { useFetchJson } from "@/lib/useFetchJson";
 import { formatEUR, formatMonths } from "@/lib/format";
 import type { SummaryData, CustomerInvoiceRow } from "@/lib/finance";
@@ -15,7 +17,8 @@ interface CustomerInvoicesResponse {
 }
 
 export default function SynthesePage() {
-  const { data, loading, error, refresh } = useFetchJson<SummaryData>("/api/summary");
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const { data, loading, error, refresh } = useFetchJson<SummaryData>(`/api/summary?year=${year}`);
   const { data: invoicesData, refresh: refreshInvoices } =
     useFetchJson<CustomerInvoicesResponse>("/api/customer-invoices");
 
@@ -33,7 +36,10 @@ export default function SynthesePage() {
             Situation financière en temps réel — source Pennylane
           </p>
         </div>
-        <RefreshButton onRefresh={refreshAll} loading={loading} />
+        <div className="flex items-center gap-3">
+          <YearSwitcher year={year} onChange={setYear} />
+          <RefreshButton onRefresh={refreshAll} loading={loading} />
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} />}
@@ -73,11 +79,25 @@ export default function SynthesePage() {
             />
           </div>
 
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <KpiCard
+              label="Dépensé moyen par mois depuis le 1er janvier"
+              value={formatEUR(data.ytdAvgMonthlyDepense)}
+              hint={`Année ${new Date().getFullYear()} en cours`}
+            />
+          </div>
+
           <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
             <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Trésorerie — 12 derniers mois
+              Trésorerie {data.projection.length > 0 && "(avec projection)"}
             </h2>
-            <TreasuryChart data={data.monthly} />
+            <TreasuryChart data={data.monthly} projection={data.projection} />
+            {data.projection.length > 0 && (
+              <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
+                Projection en pointillés : trésorerie actuelle prolongée au rythme du burn net
+                moyen ({formatEUR(data.avgBurnNet)}/mois) — indicative, pas une prévision.
+              </p>
+            )}
           </section>
 
           <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">

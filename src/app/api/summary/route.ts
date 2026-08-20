@@ -1,9 +1,10 @@
-import { computeSummary } from "@/lib/finance";
+import { computeSummary, parseYear } from "@/lib/finance";
 import { PennylaneApiError } from "@/lib/pennylane";
+import type { NextRequest } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const data = await computeSummary();
+    const data = await computeSummary(parseYear(request.url));
     return Response.json(data);
   } catch (err) {
     const status = err instanceof PennylaneApiError ? err.status : 500;

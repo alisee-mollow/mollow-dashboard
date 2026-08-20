@@ -1,9 +1,12 @@
 # Mollow — Dashboard de suivi financier
 
 Dashboard connecté en direct à l'API Pennylane pour suivre la trésorerie, le burn net,
-le runway, les créances clients, les devis en attente et les factures fournisseurs.
+le runway, les créances clients, les devis en cours et la répartition des dépenses et
+revenus par catégorie.
 
-Voir le cahier des charges complet pour le contexte et les objectifs produit.
+Voir le cahier des charges complet pour le contexte et les objectifs produit (note :
+l'écran « Factures fournisseurs » prévu initialement a été retiré à la demande de
+Mollow, jugé non utile).
 
 ## Démarrage
 
@@ -30,17 +33,38 @@ Le token n'est **jamais** exposé au client : il n'est lu que dans les routes AP
 
 ## Écrans
 
-- `/` — Vue de synthèse : trésorerie, burn net, runway, factures clients en attente,
-  courbe de trésorerie sur 12 mois, encaissé vs dépensé par mois.
-- `/creances` — Factures clients en attente de paiement + devis envoyés non acceptés.
-- `/fournisseurs` — Factures fournisseurs en attente de paiement.
-- `/depenses` — Ventilation des dépenses par catégorie analytique Pennylane (12 derniers
-  mois, camembert + tableau), basée sur les catégories réellement taguées dans
-  Pennylane (groupe « Type de dépenses »). Les transactions sans catégorie de ce
-  groupe apparaissent en « Non catégorisé ».
+- `/` — Vue de synthèse : trésorerie actuelle, burn net du mois, runway estimé,
+  factures clients en attente, dépense moyenne mensuelle depuis le 1er janvier
+  (toujours sur l'année réelle en cours, indépendamment du sélecteur), courbe de
+  trésorerie **avec projection** (pointillés, au rythme du burn net moyen, jusqu'à
+  extinction ou 12 mois), encaissé vs dépensé par mois.
+- `/creances` — Trois sections : factures clients en attente de paiement (statuts actifs
+  uniquement, voir ci-dessous), devis envoyés non acceptés (en attente **+ expirés**),
+  et devis acceptés non (entièrement) facturés — avec le montant déjà facturé et le
+  restant à facturer, pour anticiper correctement la trésorerie à venir sur les devis
+  facturés en plusieurs fois (acompte + solde).
+- `/depenses` — Ventilation des dépenses par catégorie analytique Pennylane sur une
+  **année civile sélectionnable** (camembert + tableau), basée sur les catégories
+  réellement taguées dans Pennylane (groupe « Type de dépenses »). Les transactions
+  sans catégorie de ce groupe apparaissent en « Non catégorisé », avec la liste
+  détaillée (date, libellé bancaire, montant) pour aller les catégoriser dans
+  Pennylane.
 - `/revenus` — Même principe côté revenus (groupe « Type de revenus »), complété d'un
-  top clients (classement par total facturé — payé + en attente — sur 12 mois, hors
-  brouillons et avoirs).
+  top clients sur l'année sélectionnée (classement par total facturé — payé + en
+  attente — hors brouillons et avoirs).
+
+Synthèse, Dépenses et Revenus ont un sélecteur d'année civile (‹ AAAA ›, borné à
+`MIN_YEAR` dans `YearSwitcher.tsx`) : les graphiques et ventilations basculent sur
+l'année choisie. Les KPI de la Synthèse (trésorerie, burn, runway, dépense moyenne
+YTD) restent, eux, toujours calculés sur l'état réel actuel — seule la courbe change
+avec l'année affichée.
+
+**Factures clients en attente — statuts actifs uniquement** : le filtre ne se limite
+plus à `paid: false`, mais à un statut dans `{upcoming, late, partially_paid}`. Deux
+statuts observés en conditions réelles ont `paid: false` sans être de vraies créances :
+`archived` (facture classée sans suite, ex. une note de frais mal importée) et
+`incomplete` (document mal formé, parfois sans client rattaché) — voir
+`ACTIVE_RECEIVABLE_STATUSES` dans `src/lib/finance.ts`.
 
 Le groupe de catégories est retrouvé par libellé, pas par id (qui diffère entre
 sandbox et production) — voir `findCategoryGroup` dans `src/lib/finance.ts`.
@@ -69,10 +93,8 @@ tests contre le sandbox Mollow :
    (`src/lib/finance.ts`).
 2. **Filtres booléens** (`draft`, `credit_note` sur `/customer_invoices`) attendent la
    chaîne `"false"`/`"true"`, pas un booléen JSON → corrigé.
-3. **Sens du champ `remaining_amount_with_tax`** : positif sur `customer_invoices`,
-   mais **négatif** sur `supplier_invoices` pour une facture impayée (ex. `"-4.58"`
-   pour une facture de `4.58 €`). Le code prend la valeur absolue pour les factures
-   fournisseurs (`getUnpaidSupplierInvoices`).
+3. **Sens du champ `remaining_amount_with_tax`** : positif sur `customer_invoices`
+   pour une facture impayée.
 4. **Champ `amount` des transactions** : positif = encaissement, négatif = décaissement
    — confirmé par les données réelles (courbes de trésorerie et encaissé/dépensé
    cohérentes avec la trésorerie affichée).
@@ -93,22 +115,45 @@ tests contre le sandbox Mollow :
    qui peuvent inclure des entrées hors facturation comme un financement), le top
    clients sur les factures clients (`customer_invoices.amount`). Les deux totaux ne
    coïncident donc pas nécessairement — signalé dans l'UI.
+10. **Statuts `archived` et `incomplete`** sur `customer_invoices` : `paid: false`
+    sans être de vraies créances actives (ex. une note de frais importée par erreur
+    comme facture client, ou un document sans client rattaché). Repéré en confrontant
+    les factures affichées à la réalité métier (Mollow a signalé 3 lignes non
+    pertinentes) — voir point ci-dessus sur `ACTIVE_RECEIVABLE_STATUSES`.
+11. **`operator: "in"`** fonctionne sur le filtre `status` de `/quotes`
+    (`getOpenQuotes`), malgré l'absence de champs de filtre documentés pour cet
+    endpoint dans la doc publique.
+12. **`quote_id` est un champ de filtre valide sur `/customer_invoices`**
+    (`getUnbilledAcceptedQuotes`), ce qui permet de retrouver les factures déjà
+    émises contre un devis donné sans avoir à parser l'URL `linked_invoices` fournie
+    par l'objet quote.
+13. Certains devis **acceptés sont facturés en plusieurs fois** (acompte + solde) :
+    5 des 30 devis non-`invoiced`/`denied` testés en sandbox avaient déjà une
+    facture partielle liée, alors que le devis restait au statut `accepted`
+    (il ne bascule à `invoiced` qu'une fois entièrement facturé).
 
 Points restant des approximations assumées (pas des bugs, mais à garder en tête) :
 
 - **Comptes bancaires en devise non-EUR** : non convertis (pas de taux fourni par
   `bank_accounts`), donc exclus du calcul de trésorerie et signalés dans l'UI si
   applicable (`nonEurAccountsCount`).
-- **Trésorerie de fin de mois** (courbe 12 mois) : reconstituée en remontant depuis la
-  trésorerie actuelle via les transactions bancaires uniquement — indicatif, pas un
-  solde comptable exact au centime (n'inclut pas d'éventuels ajustements hors
-  transactions bancaires).
-- **Burn net moyen** : calculé sur les 6 derniers mois clos par défaut (constante
-  `BURN_AVERAGE_MONTHS` dans `src/lib/finance.ts`) — le cahier des charges indique
-  "3 à 6 mois", ajustable facilement si besoin.
-- Les 3 écrans ont été testés en local avec le token sandbox Mollow : données
+- **Trésorerie de fin de mois** : reconstituée en remontant depuis la trésorerie
+  actuelle via les transactions bancaires uniquement, quelle que soit l'année
+  affichée (la requête récupère toujours les transactions depuis le 1er janvier de
+  l'année choisie jusqu'à aujourd'hui) — indicatif, pas un solde comptable exact au
+  centime. Deux appels séparés à un instant différent peuvent donc afficher une
+  frontière décembre/janvier légèrement différente si de nouvelles transactions sont
+  arrivées entre-temps (constaté en sandbox, où les données de test évoluent en
+  continu) — non-problème en production où l'historique est stable.
+- **Burn net moyen / projection** : calculés sur les 6 derniers mois clos réels
+  (constante `BURN_AVERAGE_MONTHS` dans `src/lib/finance.ts`) — le cahier des charges
+  indique "3 à 6 mois", ajustable facilement si besoin. La projection de trésorerie
+  prolonge ce rythme sur un horizon d'au plus 12 mois (`MAX_PROJECTION_MONTHS`) ;
+  c'est une extrapolation linéaire indicative, pas une prévision.
+- Les 4 écrans ont été testés en local avec le token sandbox Mollow : données
   cohérentes entre elles (trésorerie, burn, total factures clients identique entre
-  la synthèse et l'écran créances).
+  la synthèse et l'écran créances), sélecteur d'année vérifié sur Synthèse/Dépenses/
+  Revenus.
 
 ## Charte graphique Mollow
 
