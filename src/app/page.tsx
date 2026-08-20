@@ -1,69 +1,104 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { KpiCard } from "@/components/KpiCard";
+import { RefreshButton } from "@/components/RefreshButton";
+import { ErrorBanner } from "@/components/ErrorBanner";
+import { TreasuryChart } from "@/components/TreasuryChart";
+import { InOutChart } from "@/components/InOutChart";
+import { useFetchJson } from "@/lib/useFetchJson";
+import { formatEUR, formatMonths } from "@/lib/format";
+import type { SummaryData, CustomerInvoiceRow } from "@/lib/finance";
+
+interface CustomerInvoicesResponse {
+  rows: CustomerInvoiceRow[];
+  total: number;
+}
+
+export default function SynthesePage() {
+  const { data, loading, error, refresh } = useFetchJson<SummaryData>("/api/summary");
+  const { data: invoicesData, refresh: refreshInvoices } =
+    useFetchJson<CustomerInvoicesResponse>("/api/customer-invoices");
+
+  function refreshAll() {
+    refresh();
+    refreshInvoices();
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="flex flex-col gap-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Vue de synthèse</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Situation financière en temps réel — source Pennylane
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+        <RefreshButton onRefresh={refreshAll} loading={loading} />
+      </div>
+
+      {error && <ErrorBanner message={error} />}
+
+      {data && !error && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard label="Trésorerie actuelle" value={formatEUR(data.treasury)} />
+            <KpiCard
+              label="Burn net du mois"
+              value={formatEUR(data.burnNetMonth)}
+              tone={data.burnNetMonth >= 0 ? "positive" : "negative"}
+              hint={`Encaissé ${formatEUR(data.mtdEncaisse)} · Dépensé ${formatEUR(data.mtdDepense)}`}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            <KpiCard
+              label="Runway estimé"
+              value={data.runwayMonths !== null ? formatMonths(data.runwayMonths) : "N/A"}
+              tone={
+                data.runwayMonths === null
+                  ? "positive"
+                  : data.runwayMonths < 6
+                    ? "negative"
+                    : data.runwayMonths < 12
+                      ? "warning"
+                      : "positive"
+              }
+              hint={
+                data.runwayMonths === null
+                  ? "Trésorerie non décroissante"
+                  : `Burn net moyen ${formatEUR(data.avgBurnNet)}/mois`
+              }
+            />
+            <KpiCard
+              label="Factures clients en attente"
+              value={invoicesData ? formatEUR(invoicesData.total) : "…"}
+              hint={invoicesData ? `${invoicesData.rows.length} facture(s)` : undefined}
+            />
+          </div>
+
+          <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+            <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Trésorerie — 12 derniers mois
+            </h2>
+            <TreasuryChart data={data.monthly} />
+          </section>
+
+          <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+            <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Encaissé vs dépensé, mois par mois
+            </h2>
+            <InOutChart data={data.monthly} />
+          </section>
+
+          {data.nonEurAccountsCount > 0 && (
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              {data.nonEurAccountsCount} compte(s) bancaire(s) hors EUR exclu(s) du calcul de
+              trésorerie (pas de conversion disponible via l&apos;API).
+            </p>
+          )}
+        </>
+      )}
+
+      {loading && !data && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">Chargement des données Pennylane…</p>
+      )}
     </div>
   );
 }
