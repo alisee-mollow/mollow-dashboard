@@ -8,6 +8,7 @@ import type {
   Quote,
   Customer,
   Supplier,
+  CategoryGroup,
 } from "./pennylane-types";
 
 // Nombre de mois clos utilisés pour le burn net moyen (spec: "3 à 6 derniers mois clos").
@@ -318,4 +319,96 @@ export async function getPendingQuotes(): Promise<{ rows: QuoteRow[]; total: num
 
   const total = rows.reduce((sum, r) => sum + r.amount, 0);
   return { rows, total };
+}
+
+const UNCATEGORIZED_LABEL = "Non catégorisé";
+// Profondeur d'historique pour la ventilation des dépenses par catégorie.
+const SPENDING_HISTORY_MONTHS = 12;
+
+export interface SpendingCategoryRow {
+  category: string;
+  amount: number;
+  transactionCount: number;
+  share: number; // part du total, entre 0 et 1
+}
+
+export interface SpendingBreakdown {
+  rows: SpendingCategoryRow[];
+  total: number;
+  expenseGroupFound: boolean;
+  periodMonths: number;
+}
+
+// Trouve le groupe de catégories analytiques "Type de dépenses" (le libellé exact peut
+// varier selon la configuration du compte Pennylane — recherche insensible à la casse
+// et aux accents plutôt qu'un id fixe, qui diffère entre sandbox et production).
+async function findExpenseCategoryGroup(): Promise<CategoryGroup | null> {
+  const groups = await fetchAllPages<CategoryGroup>("/category_groups");
+  const normalize = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+  return (
+    groups.find((g) => normalize(g.label).includes("type de depense")) ??
+    groups.find((g) => normalize(g.label).includes("depense")) ??
+    null
+  );
+}
+
+export async function getSpendingByCategory(): Promise<SpendingBreakdown> {
+  const expenseGroup = await findExpenseCategoryGroup();
+  const since = startOfMonthsAgo(SPENDING_HISTORY_MONTHS - 1);
+  const transactions = await getTransactionsSince(isoDate(since));
+
+  const totals = new Map<string, { amount: number; count: number }>();
+
+  function addToCategory(label: string, amount: number) {
+    const entry = totals.get(label) ?? { amount: 0, count: 0 };
+    entry.amount += amount;
+    totals.set(label, entry);
+  }
+
+  for (const tx of transactions) {
+    const amount = toNumber(tx.amount);
+    if (amount >= 0) continue; // on ne ventile que les dépenses (montants négatifs)
+    const spend = Math.abs(amount);
+
+    const expenseCategories = expenseGroup
+      ? tx.categories.filter((c) => c.category_group.id === expenseGroup.id)
+      : [];
+
+    if (expenseCategories.length === 0) {
+      addToCategory(UNCATEGORIZED_LABEL, spend);
+      const entry = totals.get(UNCATEGORIZED_LABEL)!;
+      entry.count += 1;
+      continue;
+    }
+
+    const weightSum = expenseCategories.reduce((s, c) => s + toNumber(c.weight), 0) || 1;
+    for (const cat of expenseCategories) {
+      const share = toNumber(cat.weight) / weightSum;
+      addToCategory(cat.label, spend * share);
+      const entry = totals.get(cat.label)!;
+      entry.count += 1;
+    }
+  }
+
+  const total = Array.from(totals.values()).reduce((sum, v) => sum + v.amount, 0);
+
+  const rows: SpendingCategoryRow[] = Array.from(totals.entries())
+    .map(([category, { amount, count }]) => ({
+      category,
+      amount,
+      transactionCount: count,
+      share: total > 0 ? amount / total : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return {
+    rows,
+    total,
+    expenseGroupFound: expenseGroup !== null,
+    periodMonths: SPENDING_HISTORY_MONTHS,
+  };
 }

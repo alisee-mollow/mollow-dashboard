@@ -39,6 +39,12 @@ export interface Filter {
   value: string | number | boolean | (string | number)[];
 }
 
+const MAX_RETRIES = 4;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function pennylaneFetch<T>(
   path: string,
   params: { filter?: Filter[]; sort?: string; cursor?: string; limit?: number } = {}
@@ -51,23 +57,34 @@ async function pennylaneFetch<T>(
   if (params.cursor) url.searchParams.set("cursor", params.cursor);
   url.searchParams.set("limit", String(params.limit ?? 100));
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new PennylaneApiError(
-      res.status,
-      `Pennylane API ${res.status} sur ${path} : ${body.slice(0, 500)}`
-    );
+    if (res.status === 429 && attempt < MAX_RETRIES) {
+      const retryAfter = Number(res.headers.get("Retry-After"));
+      const delayMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 500 * 2 ** attempt;
+      await sleep(delayMs);
+      continue;
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new PennylaneApiError(
+        res.status,
+        `Pennylane API ${res.status} sur ${path} : ${body.slice(0, 500)}`
+      );
+    }
+
+    return res.json() as Promise<T>;
   }
 
-  return res.json() as Promise<T>;
+  throw new PennylaneApiError(429, `Pennylane API : rate limit persistant sur ${path}`);
 }
 
 // Récupère toutes les pages d'un endpoint paginé par curseur.

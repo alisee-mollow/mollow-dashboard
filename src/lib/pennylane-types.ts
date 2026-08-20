@@ -20,14 +20,27 @@ export interface BankAccount {
   bank_establishment?: Ref;
 }
 
+export interface TransactionCategory {
+  id: number;
+  label: string;
+  weight: string; // part de la transaction allouée à cette catégorie, ex. "1.0", "0.5"
+  category_group: { id: number };
+}
+
 export interface Transaction {
   id: number;
   label: string | null;
   date: string; // YYYY-MM-DD
-  amount: string; // en euros, signé (positif = entrée, négatif = sortie — à confirmer en sandbox)
+  amount: string; // en euros, signé : positif = entrée, négatif = sortie (confirmé en sandbox)
   currency_amount: string;
   currency: string | null;
   bank_account: Ref;
+  categories: TransactionCategory[];
+}
+
+export interface CategoryGroup {
+  id: number;
+  label: string;
 }
 
 // Enum élargi après vérification sandbox : "upcoming" observé en conditions réelles
