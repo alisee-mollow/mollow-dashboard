@@ -94,3 +94,17 @@ export interface Customer {
   id: number;
   name: string;
 }
+
+export interface Supplier {
+  id: number;
+  name: string;
+}
+
+// Champs minimaux utilisés pour le classement "Top fournisseurs" (src/lib/finance.ts,
+// getTopSuppliers) — pas de suivi de paiement ici, seulement l'agrégation par montant.
+export interface SupplierInvoiceSummary {
+  id: number;
+  amount: string;
+  date: string | null;
+  supplier: Ref | null;
+}

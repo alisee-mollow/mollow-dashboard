@@ -5,11 +5,12 @@ import { RefreshButton } from "@/components/RefreshButton";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { SortableTable, type Column } from "@/components/SortableTable";
 import { CategoryPieChart } from "@/components/CategoryPieChart";
+import { RankingBarChart } from "@/components/RankingBarChart";
 import { KpiCard } from "@/components/KpiCard";
 import { YearSwitcher } from "@/components/YearSwitcher";
 import { useFetchJson } from "@/lib/useFetchJson";
 import { formatEUR, formatDate } from "@/lib/format";
-import type { CategoryBreakdown, CategoryRow, UncategorizedTransaction } from "@/lib/finance";
+import type { CategoryBreakdown, CategoryRow, TopSupplierRow, TopSuppliersResult, UncategorizedTransaction } from "@/lib/finance";
 
 const columns: Column<CategoryRow>[] = [
   { key: "category", header: "Catégorie", accessor: (r) => r.category },
@@ -47,9 +48,46 @@ const uncategorizedColumns: Column<UncategorizedTransaction>[] = [
   },
 ];
 
+const supplierColumns: Column<TopSupplierRow>[] = [
+  { key: "supplierName", header: "Fournisseur", accessor: (r) => r.supplierName },
+  {
+    key: "amount",
+    header: "Montant facturé",
+    align: "right",
+    accessor: (r) => r.amount,
+    render: (r) => formatEUR(r.amount),
+  },
+  {
+    key: "share",
+    header: "Part du total",
+    align: "right",
+    accessor: (r) => r.share,
+    render: (r) => `${(r.share * 100).toFixed(1)} %`,
+  },
+  {
+    key: "invoiceCount",
+    header: "Factures",
+    align: "right",
+    accessor: (r) => r.invoiceCount,
+  },
+];
+
+function yoyLabel(current: number, previous: number): string | undefined {
+  if (previous <= 0) return undefined;
+  const pct = ((current - previous) / previous) * 100;
+  const sign = pct >= 0 ? "+" : "";
+  return `${sign}${pct.toFixed(0)} % vs même période N-1 (${formatEUR(previous)})`;
+}
+
 export default function DepensesPage() {
   const [year, setYear] = useState(() => new Date().getFullYear());
   const { data, loading, error, refresh } = useFetchJson<CategoryBreakdown>(`/api/spending?year=${year}`);
+  const suppliers = useFetchJson<TopSuppliersResult>(`/api/top-suppliers?year=${year}`);
+
+  function refreshAll() {
+    refresh();
+    suppliers.refresh();
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -62,7 +100,7 @@ export default function DepensesPage() {
         </div>
         <div className="flex items-center gap-3">
           <YearSwitcher year={year} onChange={setYear} />
-          <RefreshButton onRefresh={refresh} loading={loading} />
+          <RefreshButton onRefresh={refreshAll} loading={loading || suppliers.loading} />
         </div>
       </div>
 
@@ -79,7 +117,11 @@ export default function DepensesPage() {
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <KpiCard label="Total dépensé" value={formatEUR(data.total)} hint={`Année ${data.year}`} />
+            <KpiCard
+              label="Total dépensé"
+              value={formatEUR(data.total)}
+              hint={yoyLabel(data.total, data.previousYearTotal) ?? `Année ${data.year}`}
+            />
             <KpiCard label="Catégories" value={String(data.rows.length)} />
             <KpiCard
               label="Non catégorisé"
@@ -117,6 +159,34 @@ export default function DepensesPage() {
               />
             </section>
           )}
+        </>
+      )}
+
+      {suppliers.error && <ErrorBanner message={suppliers.error} />}
+      {suppliers.data && !suppliers.error && (
+        <>
+          <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
+            <div className="mb-4 flex items-baseline justify-between">
+              <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Top fournisseurs</h2>
+              <span className="text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
+                Total : {formatEUR(suppliers.data.total)}
+              </span>
+            </div>
+            <RankingBarChart
+              rows={suppliers.data.rows.map((r) => ({ name: r.supplierName, value: r.amount }))}
+              color="var(--chart-negative)"
+              valueLabel="Facturé"
+            />
+          </section>
+
+          <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
+            <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">Détail par fournisseur</h2>
+            <SortableTable
+              columns={supplierColumns}
+              rows={suppliers.data.rows}
+              rowKey={(r) => r.supplierName}
+            />
+          </section>
         </>
       )}
     </div>

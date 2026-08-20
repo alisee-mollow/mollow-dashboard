@@ -55,22 +55,18 @@ export default function SynthesePage() {
               hint={`Encaissé ${formatEUR(data.mtdEncaisse)} · Dépensé ${formatEUR(data.mtdDepense)}`}
             />
             <KpiCard
-              label="Runway estimé"
-              value={data.runwayMonths !== null ? formatMonths(data.runwayMonths) : "N/A"}
+              label="Mois de trésorerie disponible"
+              value={data.monthsOfTreasury !== null ? formatMonths(data.monthsOfTreasury) : "N/A"}
               tone={
-                data.runwayMonths === null
+                data.monthsOfTreasury === null
                   ? "positive"
-                  : data.runwayMonths < 6
+                  : data.monthsOfTreasury < 6
                     ? "negative"
-                    : data.runwayMonths < 12
+                    : data.monthsOfTreasury < 12
                       ? "warning"
                       : "positive"
               }
-              hint={
-                data.runwayMonths === null
-                  ? "Trésorerie non décroissante"
-                  : `Burn net moyen ${formatEUR(data.avgBurnNet)}/mois`
-              }
+              hint={`Au rythme de dépense moyen (${formatEUR(data.avgMonthlyDepense)}/mois), hors rentrées futures`}
             />
             <KpiCard
               label="Factures clients en attente"
@@ -104,7 +100,7 @@ export default function SynthesePage() {
             <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Encaissé vs dépensé, mois par mois
             </h2>
-            <InOutChart data={data.monthly} />
+            <InOutChart data={data.monthly} previousYear={data.previousYearMonthly} />
           </section>
 
           {data.nonEurAccountsCount > 0 && (

@@ -6,6 +6,8 @@ import type {
   CustomerInvoice,
   Quote,
   Customer,
+  Supplier,
+  SupplierInvoiceSummary,
   CategoryGroup,
 } from "./pennylane-types";
 
@@ -70,6 +72,22 @@ export function computeTreasury(accounts: BankAccount[]): {
   return { total, nonEurAccounts };
 }
 
+// Virements entre comptes bancaires Mollow (ex. alimentation du compte Pennylane
+// depuis le compte principal, ouverture du compte La Nef) : ce ne sont pas des
+// revenus/dépenses mais de simples déplacements d'argent en interne. Détecté par
+// libellé — validé en confrontant tous les libellés à un scan de paires
+// montant/date identiques sur deux comptes différents (voir historique du commit) :
+// tous les libellés matchant "recharge compte" ou "ouverture compte" faisaient
+// partie d'une paire symétrique, aucun faux positif trouvé sur ~1600 transactions.
+function isInternalTransfer(label: string | null): boolean {
+  if (!label) return false;
+  const normalized = label
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+  return normalized.includes("recharge compte") || normalized.includes("ouverture compte");
+}
+
 export async function getTransactionsInRange(
   sinceISO: string,
   untilISO?: string
@@ -79,7 +97,8 @@ export async function getTransactionsInRange(
   // d'importance ici puisque les transactions sont agrégées par mois ensuite.
   const filter: Filter[] = [{ field: "date", operator: "gteq", value: sinceISO }];
   if (untilISO) filter.push({ field: "date", operator: "lteq", value: untilISO });
-  return fetchAllPages<Transaction>("/transactions", { filter });
+  const transactions = await fetchAllPages<Transaction>("/transactions", { filter });
+  return transactions.filter((tx) => !isInternalTransfer(tx.label));
 }
 
 interface MonthAgg {
@@ -123,16 +142,19 @@ export interface SummaryData {
   mtdDepense: number;
   burnNetMonth: number;
   avgBurnNet: number;
-  runwayMonths: number | null; // null si trésorerie non décroissante
+  avgMonthlyDepense: number; // dépense brute moyenne (6 derniers mois clos)
+  monthsOfTreasury: number | null; // trésorerie / avgMonthlyDepense ; null si aucune dépense
   ytdAvgMonthlyDepense: number; // dépense moyenne mensuelle depuis le 1er janvier de l'année en cours
   year: number;
   monthly: MonthlyPoint[]; // les mois de `year` (Jan → mois courant si year = année en cours)
+  previousYearMonthly: MonthlyPoint[]; // mêmes mois, année `year - 1`, pour comparaison
   projection: ProjectedPoint[]; // suite de `monthly` si year = année en cours, sinon vide
 }
 
-// Les KPI (trésorerie, burn, runway, dépense moyenne YTD) reflètent toujours l'état
-// réel actuel, indépendamment de l'année affichée dans les graphiques — seuls
-// `monthly` et `projection` changent avec `year`.
+// Les KPI (trésorerie, burn, mois de trésorerie, dépense moyenne YTD) reflètent
+// toujours l'état réel actuel, indépendamment de l'année affichée dans les
+// graphiques — seuls `monthly`, `previousYearMonthly` et `projection` changent
+// avec `year`.
 export async function computeSummary(year: number): Promise<SummaryData> {
   const accounts = await getBankAccounts();
   const { total: treasury, nonEurAccounts } = computeTreasury(accounts);
@@ -142,8 +164,12 @@ export async function computeSummary(year: number): Promise<SummaryData> {
   // On récupère toujours jusqu'à aujourd'hui, même pour une année passée : la
   // reconstitution de la trésorerie de fin de mois remonte depuis la trésorerie
   // actuelle et a donc besoin de tous les mois entre `since` et maintenant.
-  const transactions = await getTransactionsInRange(isoDate(since));
+  const [transactions, previousYearTransactions] = await Promise.all([
+    getTransactionsInRange(isoDate(since)),
+    getTransactionsInRange(isoDate(startOfYear(displayYear - 1)), isoDate(new Date(Date.UTC(displayYear - 1, 11, 31)))),
+  ]);
   const byMonth = aggregateByMonth(transactions);
+  const previousYearByMonth = aggregateByMonth(previousYearTransactions);
 
   const nowKey = currentMonthKey();
 
@@ -176,7 +202,13 @@ export async function computeSummary(year: number): Promise<SummaryData> {
     };
   };
 
+  const toPreviousYearPoint = (key: string): MonthlyPoint => {
+    const agg = previousYearByMonth.get(key) ?? { month: key, encaisse: 0, depense: 0 };
+    return { month: key, encaisse: agg.encaisse, depense: agg.depense, burnNet: agg.encaisse - agg.depense, treasuryEnd: 0 };
+  };
+
   const monthly = fullMonths.filter((key) => key.startsWith(String(displayYear))).map(toPoint);
+  const previousYearMonthly = monthly.map((m) => toPreviousYearPoint(addMonths(m.month, -12)));
 
   // KPI "en direct" : basés sur le mois courant réel, pas sur `year`.
   const currentPoint = toPoint(nowKey);
@@ -188,8 +220,15 @@ export async function computeSummary(year: number): Promise<SummaryData> {
   const lastClosed = closedMonths.slice(-BURN_AVERAGE_MONTHS);
   const avgBurnNet =
     lastClosed.length > 0 ? lastClosed.reduce((sum, m) => sum + m.burnNet, 0) / lastClosed.length : 0;
+  const avgMonthlyDepense =
+    lastClosed.length > 0 ? lastClosed.reduce((sum, m) => sum + m.depense, 0) / lastClosed.length : 0;
 
-  const runwayMonths = avgBurnNet < 0 ? treasury / Math.abs(avgBurnNet) : null;
+  // "Mois de trésorerie disponible" : combien de mois la trésorerie actuelle
+  // couvrirait au rythme de dépense moyen observé, sans compter sur aucune rentrée
+  // d'argent — volontairement plus conservateur que l'ancien "runway" (qui se
+  // basait sur le burn NET et pouvait devenir "N/A" dès que les entrées dépassaient
+  // les sorties sur la période, ce qui manquait de lisibilité).
+  const monthsOfTreasury = avgMonthlyDepense > 0 ? treasury / avgMonthlyDepense : null;
 
   // Dépense moyenne mensuelle depuis le 1er janvier de l'année RÉELLE en cours
   // (indépendant de `year`) : la fenêtre récupérée démarre toujours au plus tôt à
@@ -205,8 +244,8 @@ export async function computeSummary(year: number): Promise<SummaryData> {
   const projection: ProjectedPoint[] = [];
   if (displayYear === currentYear()) {
     const horizon =
-      runwayMonths !== null
-        ? Math.min(MAX_PROJECTION_MONTHS, Math.ceil(runwayMonths) + 1)
+      avgBurnNet < 0
+        ? Math.min(MAX_PROJECTION_MONTHS, Math.ceil(treasury / Math.abs(avgBurnNet)) + 1)
         : 6;
     let key = nowKey;
     let value = currentPoint.treasuryEnd;
@@ -225,10 +264,12 @@ export async function computeSummary(year: number): Promise<SummaryData> {
     mtdDepense,
     burnNetMonth,
     avgBurnNet,
-    runwayMonths,
+    avgMonthlyDepense,
+    monthsOfTreasury,
     ytdAvgMonthlyDepense,
     year: displayYear,
     monthly,
+    previousYearMonthly,
     projection,
   };
 }
@@ -240,6 +281,11 @@ async function buildNameMap(items: { id: number; name: string }[]): Promise<Map<
 export async function getCustomersMap(): Promise<Map<number, string>> {
   const customers = await fetchAllPages<Customer>("/customers");
   return buildNameMap(customers);
+}
+
+export async function getSuppliersMap(): Promise<Map<number, string>> {
+  const suppliers = await fetchAllPages<Supplier>("/suppliers");
+  return buildNameMap(suppliers);
 }
 
 export interface CustomerInvoiceRow {
@@ -424,6 +470,20 @@ export interface CategoryBreakdown {
   groupFound: boolean;
   year: number;
   uncategorized: UncategorizedTransaction[];
+  previousYearTotal: number; // même période (YTD si année en cours), année précédente
+}
+
+// Somme des transactions d'un sens donné entre `since` (1er janvier de `year`) et
+// `until`, sans ventilation par catégorie — sert uniquement à la comparaison
+// YTD / année précédente.
+async function getPeriodTotal(direction: "expense" | "revenue", year: number, until: Date): Promise<number> {
+  const transactions = await getTransactionsInRange(isoDate(startOfYear(year)), isoDate(until));
+  return transactions.reduce((sum, tx) => {
+    const amount = toNumber(tx.amount);
+    if (direction === "expense" && amount < 0) return sum + Math.abs(amount);
+    if (direction === "revenue" && amount > 0) return sum + amount;
+    return sum;
+  }, 0);
 }
 
 // Trouve un groupe de catégories analytiques Pennylane par mot-clé dans son libellé
@@ -458,9 +518,18 @@ async function getBreakdownByCategory(
   const displayYear = Math.min(year, currentYear());
   const since = startOfYear(displayYear);
   const until = new Date(Date.UTC(displayYear, 11, 31));
-  const [group, transactions] = await Promise.all([
+  const now = new Date();
+  // Comparaison "à période comparable" : si on affiche l'année en cours (donc
+  // partielle, YTD), on borne l'année précédente au même jour ; sinon (année
+  // passée complète) on compare à l'année précédente complète elle aussi.
+  const comparisonCutoff =
+    displayYear === currentYear()
+      ? new Date(Date.UTC(displayYear - 1, now.getUTCMonth(), now.getUTCDate()))
+      : new Date(Date.UTC(displayYear - 1, 11, 31));
+  const [group, transactions, previousYearTotal] = await Promise.all([
     findCategoryGroup(groupKeyword),
     getTransactionsInRange(isoDate(since), isoDate(until)),
+    getPeriodTotal(direction, displayYear - 1, comparisonCutoff),
   ]);
 
   const totals = new Map<string, { amount: number; count: number }>();
@@ -507,7 +576,7 @@ async function getBreakdownByCategory(
 
   uncategorized.sort((a, b) => b.amount - a.amount);
 
-  return { rows, total, groupFound: group !== null, year: displayYear, uncategorized };
+  return { rows, total, groupFound: group !== null, year: displayYear, uncategorized, previousYearTotal };
 }
 
 export async function getSpendingByCategory(year: number): Promise<CategoryBreakdown> {
@@ -571,4 +640,136 @@ export async function getTopCustomers(year: number): Promise<TopCustomersResult>
     .sort((a, b) => b.amount - a.amount);
 
   return { rows, total, year: displayYear };
+}
+
+export interface TopSupplierRow {
+  supplierName: string;
+  amount: number;
+  invoiceCount: number;
+  share: number;
+}
+
+export interface TopSuppliersResult {
+  rows: TopSupplierRow[];
+  total: number;
+  year: number;
+}
+
+// Top fournisseurs par total facturé sur l'année civile (toutes factures fournisseurs
+// de la période, indépendamment du statut de paiement) — donne une vision détaillée
+// des dépenses par fournisseur (SNCF, Bubble, Adobe…) en complément de la ventilation
+// par catégorie analytique.
+export async function getTopSuppliers(year: number): Promise<TopSuppliersResult> {
+  const displayYear = Math.min(year, currentYear());
+  const since = startOfYear(displayYear);
+  const until = new Date(Date.UTC(displayYear, 11, 31));
+
+  const [invoices, suppliers] = await Promise.all([
+    fetchAllPages<SupplierInvoiceSummary>("/supplier_invoices", {
+      filter: [
+        { field: "date", operator: "gteq", value: isoDate(since) },
+        { field: "date", operator: "lteq", value: isoDate(until) },
+      ],
+    }),
+    getSuppliersMap(),
+  ]);
+
+  const totals = new Map<string, { amount: number; count: number }>();
+  for (const inv of invoices) {
+    const name = inv.supplier ? suppliers.get(inv.supplier.id) ?? `Fournisseur #${inv.supplier.id}` : "—";
+    const entry = totals.get(name) ?? { amount: 0, count: 0 };
+    entry.amount += toNumber(inv.amount);
+    entry.count += 1;
+    totals.set(name, entry);
+  }
+
+  const total = Array.from(totals.values()).reduce((sum, v) => sum + v.amount, 0);
+
+  const rows: TopSupplierRow[] = Array.from(totals.entries())
+    .map(([supplierName, { amount, count }]) => ({
+      supplierName,
+      amount,
+      invoiceCount: count,
+      share: total > 0 ? amount / total : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return { rows, total, year: displayYear };
+}
+
+export interface MonthlyCaPoint {
+  month: string;
+  ca: number;
+}
+
+export interface AccrualRevenueData {
+  year: number;
+  total: number;
+  previousYearTotal: number; // même période (YTD si année en cours), année précédente
+  avgMonthlyCa: number;
+  monthly: MonthlyCaPoint[];
+  previousYearMonthly: MonthlyCaPoint[]; // mêmes mois, année `year - 1`
+}
+
+// Chiffre d'affaires "facturé" (comptabilité d'engagement) : basé sur la date
+// d'émission des factures clients, pas sur les encaissements bancaires — volontairement
+// découplé de la trésorerie (`/revenus` est en cash, cette page est en facturation).
+// Les avoirs (credit_note) sont inclus avec leur montant négatif, ce qui les
+// déduit naturellement du total plutôt que de les ignorer.
+export async function getAccrualRevenue(year: number): Promise<AccrualRevenueData> {
+  const displayYear = Math.min(year, currentYear());
+  const since = startOfYear(displayYear);
+  const until = new Date(Date.UTC(displayYear, 11, 31));
+  const now = new Date();
+  const comparisonCutoff =
+    displayYear === currentYear()
+      ? new Date(Date.UTC(displayYear - 1, now.getUTCMonth(), now.getUTCDate()))
+      : new Date(Date.UTC(displayYear - 1, 11, 31));
+
+  const fetchInvoices = (fromDate: Date, toDate: Date) =>
+    fetchAllPages<CustomerInvoice>("/customer_invoices", {
+      filter: [
+        { field: "date", operator: "gteq", value: isoDate(fromDate) },
+        { field: "date", operator: "lteq", value: isoDate(toDate) },
+        { field: "draft", operator: "eq", value: "false" },
+      ],
+    });
+
+  const [invoices, previousYearInvoices] = await Promise.all([
+    fetchInvoices(since, until),
+    fetchInvoices(startOfYear(displayYear - 1), comparisonCutoff),
+  ]);
+
+  function aggregateCaByMonth(invs: CustomerInvoice[]): Map<string, number> {
+    const map = new Map<string, number>();
+    for (const inv of invs) {
+      if (!inv.date) continue;
+      const key = monthKey(inv.date);
+      map.set(key, (map.get(key) ?? 0) + toNumber(inv.amount));
+    }
+    return map;
+  }
+
+  const byMonth = aggregateCaByMonth(invoices);
+  const previousYearByMonth = aggregateCaByMonth(previousYearInvoices);
+
+  // Le comparateur lexicographique "YYYY-MM" fonctionne directement : pour une
+  // année passée, la borne `key <= currentMonthKey()` est toujours vraie jusqu'à
+  // décembre ; pour l'année en cours, elle s'arrête naturellement au mois courant.
+  const months: string[] = [];
+  for (let key = `${displayYear}-01`; key <= `${displayYear}-12` && key <= currentMonthKey(); key = addMonths(key, 1)) {
+    months.push(key);
+  }
+
+  const monthly: MonthlyCaPoint[] = months.map((key) => ({ month: key, ca: byMonth.get(key) ?? 0 }));
+  const previousYearMonthly: MonthlyCaPoint[] = months.map((key) => {
+    const prevKey = addMonths(key, -12);
+    return { month: prevKey, ca: previousYearByMonth.get(prevKey) ?? 0 };
+  });
+
+  const total = monthly.reduce((sum, m) => sum + m.ca, 0);
+  const previousYearTotal = previousYearMonthly.reduce((sum, m) => sum + m.ca, 0);
+  const avgMonthlyCa = monthly.length > 0 ? total / monthly.length : 0;
+
+  return { year: displayYear, total, previousYearTotal, avgMonthlyCa, monthly, previousYearMonthly };
 }

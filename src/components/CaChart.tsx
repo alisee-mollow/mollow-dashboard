@@ -11,25 +11,23 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import type { MonthlyPoint } from "@/lib/finance";
+import type { MonthlyCaPoint } from "@/lib/finance";
 import { formatEUR, formatMonthLabel } from "@/lib/format";
 
-export function InOutChart({
+export function CaChart({
   data,
   previousYear = [],
 }: {
-  data: MonthlyPoint[];
-  previousYear?: MonthlyPoint[];
+  data: MonthlyCaPoint[];
+  previousYear?: MonthlyCaPoint[];
 }) {
-  const hasPreviousYear = previousYear.length === data.length && previousYear.some((m) => m.encaisse > 0 || m.depense > 0);
+  const hasPreviousYear = previousYear.length === data.length && previousYear.some((m) => m.ca !== 0);
   const previousYearLabel = previousYear[0]?.month.slice(0, 4);
 
   const chartData = data.map((d, i) => ({
     label: formatMonthLabel(d.month),
-    encaisse: d.encaisse,
-    depense: d.depense,
-    encaisseN1: hasPreviousYear ? previousYear[i].encaisse : null,
-    depenseN1: hasPreviousYear ? previousYear[i].depense : null,
+    ca: d.ca,
+    caN1: hasPreviousYear ? previousYear[i].ca : null,
   }));
 
   return (
@@ -37,12 +35,7 @@ export function InOutChart({
       <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
         <XAxis dataKey="label" stroke="var(--chart-axis)" fontSize={12} />
-        <YAxis
-          stroke="var(--chart-axis)"
-          fontSize={12}
-          tickFormatter={(v) => formatEUR(v)}
-          width={90}
-        />
+        <YAxis stroke="var(--chart-axis)" fontSize={12} tickFormatter={(v) => formatEUR(v)} width={90} />
         <Tooltip
           formatter={(value) => (value === null ? "—" : formatEUR(Number(value)))}
           contentStyle={{
@@ -53,25 +46,13 @@ export function InOutChart({
           }}
         />
         <Legend />
-        <Bar dataKey="encaisse" name="Encaissé" fill="var(--chart-positive)" radius={[3, 3, 0, 0]} />
-        <Bar dataKey="depense" name="Dépensé" fill="var(--chart-negative)" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="ca" name="CA facturé" fill="var(--chart-primary)" radius={[3, 3, 0, 0]} />
         {hasPreviousYear && (
           <Line
             type="monotone"
-            dataKey="encaisseN1"
-            name={`Encaissé ${previousYearLabel}`}
-            stroke="var(--chart-positive)"
-            strokeDasharray="4 3"
-            strokeWidth={1.5}
-            dot={false}
-          />
-        )}
-        {hasPreviousYear && (
-          <Line
-            type="monotone"
-            dataKey="depenseN1"
-            name={`Dépensé ${previousYearLabel}`}
-            stroke="var(--chart-negative)"
+            dataKey="caN1"
+            name={`CA facturé ${previousYearLabel}`}
+            stroke="var(--chart-axis)"
             strokeDasharray="4 3"
             strokeWidth={1.5}
             dot={false}

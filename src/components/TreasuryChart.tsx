@@ -32,12 +32,12 @@ export function TreasuryChart({
     treasuryProjected: null,
   }));
 
-  // Le premier point projeté reprend la valeur du dernier point réel pour que le
-  // trait en pointillés reparte sans discontinuité visuelle.
-  const bridge: ChartPoint[] =
-    projection.length > 0 && actual.length > 0
-      ? [{ ...actual[actual.length - 1], treasuryProjected: actual[actual.length - 1].treasuryEnd }]
-      : [];
+  // Le dernier point réel porte aussi la valeur projetée (au lieu d'ajouter une
+  // entrée séparée avec le même mois) pour que le trait en pointillés reparte sans
+  // discontinuité ni doublon du mois courant sur l'axe des abscisses.
+  if (projection.length > 0 && actual.length > 0) {
+    actual[actual.length - 1].treasuryProjected = actual[actual.length - 1].treasuryEnd;
+  }
 
   const projected: ChartPoint[] = projection.map((p) => ({
     label: formatMonthLabel(p.month),
@@ -45,7 +45,7 @@ export function TreasuryChart({
     treasuryProjected: p.treasuryEnd,
   }));
 
-  const chartData = [...actual, ...bridge, ...projected];
+  const chartData = [...actual, ...projected];
   const hasNegativeProjection = projection.some((p) => p.treasuryEnd <= 0);
 
   return (

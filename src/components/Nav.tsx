@@ -8,6 +8,7 @@ const links = [
   { href: "/creances", label: "Créances et devis" },
   { href: "/depenses", label: "Dépenses" },
   { href: "/revenus", label: "Revenus" },
+  { href: "/ca", label: "Chiffre d'affaires" },
 ];
 
 export function Nav() {

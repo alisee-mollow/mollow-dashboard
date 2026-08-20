@@ -1,8 +1,8 @@
 # Mollow — Dashboard de suivi financier
 
 Dashboard connecté en direct à l'API Pennylane pour suivre la trésorerie, le burn net,
-le runway, les créances clients, les devis en cours et la répartition des dépenses et
-revenus par catégorie.
+les mois de trésorerie disponible, les créances clients, les devis en cours, la
+répartition des dépenses et revenus par catégorie, et le chiffre d'affaires facturé.
 
 Voir le cahier des charges complet pour le contexte et les objectifs produit (note :
 l'écran « Factures fournisseurs » prévu initialement a été retiré à la demande de
@@ -33,31 +33,49 @@ Le token n'est **jamais** exposé au client : il n'est lu que dans les routes AP
 
 ## Écrans
 
-- `/` — Vue de synthèse : trésorerie actuelle, burn net du mois, runway estimé,
-  factures clients en attente, dépense moyenne mensuelle depuis le 1er janvier
-  (toujours sur l'année réelle en cours, indépendamment du sélecteur), courbe de
+- `/` — Vue de synthèse : trésorerie actuelle, burn net du mois, **mois de trésorerie
+  disponible** (trésorerie ÷ dépense brute moyenne des 6 derniers mois clos — ne
+  suppose aucune rentrée future, volontairement plus conservateur que l'ancien
+  "runway" basé sur le burn net, retiré à la demande de Mollow car peu lisible quand
+  les entrées dépassaient les sorties), factures clients en attente, dépense moyenne
+  mensuelle depuis le 1er janvier (toujours sur l'année réelle en cours), courbe de
   trésorerie **avec projection** (pointillés, au rythme du burn net moyen, jusqu'à
-  extinction ou 12 mois), encaissé vs dépensé par mois.
+  extinction ou 12 mois), et encaissé vs dépensé par mois **avec comparaison à
+  l'année précédente** (lignes pointillées, mêmes mois N-1).
 - `/creances` — Trois sections : factures clients en attente de paiement (statuts actifs
   uniquement, voir ci-dessous), devis envoyés non acceptés (en attente **+ expirés**),
   et devis acceptés non (entièrement) facturés — avec le montant déjà facturé et le
   restant à facturer, pour anticiper correctement la trésorerie à venir sur les devis
   facturés en plusieurs fois (acompte + solde).
 - `/depenses` — Ventilation des dépenses par catégorie analytique Pennylane sur une
-  **année civile sélectionnable** (camembert + tableau), basée sur les catégories
-  réellement taguées dans Pennylane (groupe « Type de dépenses »). Les transactions
-  sans catégorie de ce groupe apparaissent en « Non catégorisé », avec la liste
-  détaillée (date, libellé bancaire, montant) pour aller les catégoriser dans
-  Pennylane.
+  **année civile sélectionnable** (camembert + tableau), avec comparaison du total à
+  la même période l'année précédente, un **top fournisseurs** (classement par total
+  facturé sur `supplier_invoices`, tous statuts), et la liste des transactions sans
+  catégorie du groupe « Type de dépenses » pour aller les catégoriser dans Pennylane.
 - `/revenus` — Même principe côté revenus (groupe « Type de revenus »), complété d'un
   top clients sur l'année sélectionnée (classement par total facturé — payé + en
-  attente — hors brouillons et avoirs).
+  attente — hors brouillons et avoirs). Basé sur les **encaissements bancaires**
+  (cash), volontairement différent du CA facturé ci-dessous.
+- `/ca` — Chiffre d'affaires **facturé** (comptabilité d'engagement : date d'émission
+  des factures clients, avoirs déduits), délibérément découplé de la trésorerie et
+  des encaissements bancaires — une facture peut être émise sans être encore payée,
+  ou payée un mois différent de celui de son émission. Comparaison à l'année
+  précédente sur la même période.
 
-Synthèse, Dépenses et Revenus ont un sélecteur d'année civile (‹ AAAA ›, borné à
-`MIN_YEAR` dans `YearSwitcher.tsx`) : les graphiques et ventilations basculent sur
-l'année choisie. Les KPI de la Synthèse (trésorerie, burn, runway, dépense moyenne
-YTD) restent, eux, toujours calculés sur l'état réel actuel — seule la courbe change
-avec l'année affichée.
+Synthèse, Dépenses, Revenus et Chiffre d'affaires ont un sélecteur d'année civile
+(‹ AAAA ›, borné à `MIN_YEAR` dans `YearSwitcher.tsx`) : les graphiques et
+ventilations basculent sur l'année choisie. Les KPI "en direct" de la Synthèse
+(trésorerie, burn, mois de trésorerie, dépense moyenne YTD) restent, eux, toujours
+calculés sur l'état réel actuel — seules les courbes changent avec l'année affichée.
+
+**Virements internes exclus** : les transactions dont le libellé contient "recharge
+compte" ou "ouverture compte" (mouvements entre les propres comptes bancaires de
+Mollow, ex. alimentation du compte Pennylane) sont filtrées de `getTransactionsInRange`
+— donc de toutes les agrégations (trésorerie, burn, ventilations par catégorie).
+Détection validée par recherche systématique de paires montant/date identiques sur
+deux comptes différents (voir `isInternalTransfer` dans `src/lib/finance.ts`) : tous
+les libellés matchant faisaient partie d'une paire symétrique, aucun faux positif sur
+~1600 transactions testées.
 
 **Factures clients en attente — statuts actifs uniquement** : le filtre ne se limite
 plus à `paid: false`, mais à un statut dans `{upcoming, late, partially_paid}`. Deux
@@ -131,6 +149,11 @@ tests contre le sandbox Mollow :
     5 des 30 devis non-`invoiced`/`denied` testés en sandbox avaient déjà une
     facture partielle liée, alors que le devis restait au statut `accepted`
     (il ne bascule à `invoiced` qu'une fois entièrement facturé).
+14. **Virements internes non distingués par l'API** : Pennylane ne fournit aucun
+    flag "transfert entre comptes" sur `/transactions`. Détectés par libellé
+    ("recharge compte", "ouverture compte") après validation par recherche de
+    paires montant/date identiques sur deux `bank_account` différents — signalé par
+    Mollow après avoir remarqué ces libellés en tête des montants "non catégorisés".
 
 Points restant des approximations assumées (pas des bugs, mais à garder en tête) :
 
@@ -150,10 +173,12 @@ Points restant des approximations assumées (pas des bugs, mais à garder en tê
   indique "3 à 6 mois", ajustable facilement si besoin. La projection de trésorerie
   prolonge ce rythme sur un horizon d'au plus 12 mois (`MAX_PROJECTION_MONTHS`) ;
   c'est une extrapolation linéaire indicative, pas une prévision.
-- Les 4 écrans ont été testés en local avec le token sandbox Mollow : données
+- Les 5 écrans ont été testés en local avec le token sandbox Mollow : données
   cohérentes entre elles (trésorerie, burn, total factures clients identique entre
   la synthèse et l'écran créances), sélecteur d'année vérifié sur Synthèse/Dépenses/
-  Revenus.
+  Revenus/CA, filtrage des virements internes vérifié (le "Non catégorisé" de
+  `/revenus` est passé de 13 315 € à 2 215 € une fois les recharges de compte
+  exclues, sans faux négatif sur les vraies transactions restantes).
 
 ## Charte graphique Mollow
 
