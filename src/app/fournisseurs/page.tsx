@@ -42,7 +42,7 @@ export default function FournisseursPage() {
       {error && <ErrorBanner message={error} />}
 
       {data && (
-        <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+        <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
           <div className="mb-4 flex items-baseline justify-between">
             <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Factures fournisseurs en attente

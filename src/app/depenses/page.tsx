@@ -3,13 +3,13 @@
 import { RefreshButton } from "@/components/RefreshButton";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { SortableTable, type Column } from "@/components/SortableTable";
-import { SpendingChart } from "@/components/SpendingChart";
+import { CategoryPieChart } from "@/components/CategoryPieChart";
 import { KpiCard } from "@/components/KpiCard";
 import { useFetchJson } from "@/lib/useFetchJson";
 import { formatEUR } from "@/lib/format";
-import type { SpendingBreakdown, SpendingCategoryRow } from "@/lib/finance";
+import type { CategoryBreakdown, CategoryRow } from "@/lib/finance";
 
-const columns: Column<SpendingCategoryRow>[] = [
+const columns: Column<CategoryRow>[] = [
   { key: "category", header: "Catégorie", accessor: (r) => r.category },
   {
     key: "amount",
@@ -34,7 +34,7 @@ const columns: Column<SpendingCategoryRow>[] = [
 ];
 
 export default function DepensesPage() {
-  const { data, loading, error, refresh } = useFetchJson<SpendingBreakdown>("/api/spending");
+  const { data, loading, error, refresh } = useFetchJson<CategoryBreakdown>("/api/spending");
 
   return (
     <div className="flex flex-col gap-8">
@@ -53,8 +53,8 @@ export default function DepensesPage() {
 
       {data && !error && (
         <>
-          {!data.expenseGroupFound && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+          {!data.groupFound && (
+            <div className="rounded-md border border-[var(--brand-pink)] bg-[var(--brand-blush)] px-4 py-3 text-sm text-[var(--brand-burgundy)]">
               Aucun groupe de catégories « Type de dépenses » trouvé sur ce compte Pennylane.
               Toutes les dépenses apparaissent en « Non catégorisé ». Vérifie le nom du groupe
               de catégories dans Pennylane (Comptabilité &gt; Catégories analytiques).
@@ -71,14 +71,14 @@ export default function DepensesPage() {
             />
           </div>
 
-          <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+          <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
             <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Top 10 catégories de dépenses
+              Répartition des dépenses par catégorie
             </h2>
-            <SpendingChart rows={data.rows} />
+            <CategoryPieChart rows={data.rows} />
           </section>
 
-          <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+          <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
             <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">Détail par catégorie</h2>
             <SortableTable columns={columns} rows={data.rows} rowKey={(r) => r.category} />
           </section>

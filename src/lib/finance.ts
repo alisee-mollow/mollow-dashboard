@@ -322,42 +322,51 @@ export async function getPendingQuotes(): Promise<{ rows: QuoteRow[]; total: num
 }
 
 const UNCATEGORIZED_LABEL = "Non catégorisé";
-// Profondeur d'historique pour la ventilation des dépenses par catégorie.
+// Profondeur d'historique pour les ventilations par catégorie et le top clients.
 const SPENDING_HISTORY_MONTHS = 12;
 
-export interface SpendingCategoryRow {
+export interface CategoryRow {
   category: string;
   amount: number;
   transactionCount: number;
   share: number; // part du total, entre 0 et 1
 }
 
-export interface SpendingBreakdown {
-  rows: SpendingCategoryRow[];
+export interface CategoryBreakdown {
+  rows: CategoryRow[];
   total: number;
-  expenseGroupFound: boolean;
+  groupFound: boolean;
   periodMonths: number;
 }
 
-// Trouve le groupe de catégories analytiques "Type de dépenses" (le libellé exact peut
-// varier selon la configuration du compte Pennylane — recherche insensible à la casse
-// et aux accents plutôt qu'un id fixe, qui diffère entre sandbox et production).
-async function findExpenseCategoryGroup(): Promise<CategoryGroup | null> {
+// Trouve un groupe de catégories analytiques Pennylane par mot-clé dans son libellé
+// (recherche insensible à la casse et aux accents plutôt qu'un id fixe, qui diffère
+// entre sandbox et production).
+async function findCategoryGroup(keyword: string): Promise<CategoryGroup | null> {
   const groups = await fetchAllPages<CategoryGroup>("/category_groups");
   const normalize = (s: string) =>
     s
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "")
       .toLowerCase();
+  const target = normalize(keyword);
   return (
-    groups.find((g) => normalize(g.label).includes("type de depense")) ??
-    groups.find((g) => normalize(g.label).includes("depense")) ??
+    groups.find((g) => normalize(g.label).includes(`type de ${target}`)) ??
+    groups.find((g) => normalize(g.label).includes(target)) ??
     null
   );
 }
 
-export async function getSpendingByCategory(): Promise<SpendingBreakdown> {
-  const expenseGroup = await findExpenseCategoryGroup();
+// Ventile les transactions d'un sens donné (dépense = montants négatifs, revenu =
+// montants positifs) par catégorie analytique d'un groupe donné. Une transaction peut
+// porter plusieurs catégories du même groupe avec un poids chacune (ex. 0.5 / 0.5) :
+// le montant est réparti au prorata. Sans catégorie de ce groupe, la transaction
+// tombe dans "Non catégorisé".
+async function getBreakdownByCategory(
+  groupKeyword: string,
+  direction: "expense" | "revenue"
+): Promise<CategoryBreakdown> {
+  const group = await findCategoryGroup(groupKeyword);
   const since = startOfMonthsAgo(SPENDING_HISTORY_MONTHS - 1);
   const transactions = await getTransactionsSince(isoDate(since));
 
@@ -366,37 +375,35 @@ export async function getSpendingByCategory(): Promise<SpendingBreakdown> {
   function addToCategory(label: string, amount: number) {
     const entry = totals.get(label) ?? { amount: 0, count: 0 };
     entry.amount += amount;
+    entry.count += 1;
     totals.set(label, entry);
   }
 
   for (const tx of transactions) {
     const amount = toNumber(tx.amount);
-    if (amount >= 0) continue; // on ne ventile que les dépenses (montants négatifs)
-    const spend = Math.abs(amount);
+    if (direction === "expense" && amount >= 0) continue;
+    if (direction === "revenue" && amount <= 0) continue;
+    const value = Math.abs(amount);
 
-    const expenseCategories = expenseGroup
-      ? tx.categories.filter((c) => c.category_group.id === expenseGroup.id)
+    const matchingCategories = group
+      ? tx.categories.filter((c) => c.category_group.id === group.id)
       : [];
 
-    if (expenseCategories.length === 0) {
-      addToCategory(UNCATEGORIZED_LABEL, spend);
-      const entry = totals.get(UNCATEGORIZED_LABEL)!;
-      entry.count += 1;
+    if (matchingCategories.length === 0) {
+      addToCategory(UNCATEGORIZED_LABEL, value);
       continue;
     }
 
-    const weightSum = expenseCategories.reduce((s, c) => s + toNumber(c.weight), 0) || 1;
-    for (const cat of expenseCategories) {
+    const weightSum = matchingCategories.reduce((s, c) => s + toNumber(c.weight), 0) || 1;
+    for (const cat of matchingCategories) {
       const share = toNumber(cat.weight) / weightSum;
-      addToCategory(cat.label, spend * share);
-      const entry = totals.get(cat.label)!;
-      entry.count += 1;
+      addToCategory(cat.label, value * share);
     }
   }
 
   const total = Array.from(totals.values()).reduce((sum, v) => sum + v.amount, 0);
 
-  const rows: SpendingCategoryRow[] = Array.from(totals.entries())
+  const rows: CategoryRow[] = Array.from(totals.entries())
     .map(([category, { amount, count }]) => ({
       category,
       amount,
@@ -405,10 +412,64 @@ export async function getSpendingByCategory(): Promise<SpendingBreakdown> {
     }))
     .sort((a, b) => b.amount - a.amount);
 
-  return {
-    rows,
-    total,
-    expenseGroupFound: expenseGroup !== null,
-    periodMonths: SPENDING_HISTORY_MONTHS,
-  };
+  return { rows, total, groupFound: group !== null, periodMonths: SPENDING_HISTORY_MONTHS };
+}
+
+export async function getSpendingByCategory(): Promise<CategoryBreakdown> {
+  return getBreakdownByCategory("depense", "expense");
+}
+
+export async function getRevenueByCategory(): Promise<CategoryBreakdown> {
+  return getBreakdownByCategory("revenu", "revenue");
+}
+
+export interface TopCustomerRow {
+  customerName: string;
+  amount: number;
+  invoiceCount: number;
+  share: number;
+}
+
+export interface TopCustomersResult {
+  rows: TopCustomerRow[];
+  total: number;
+  periodMonths: number;
+}
+
+// Top clients par total facturé (payé + en attente, hors brouillons et avoirs) sur la
+// période — reflète le volume d'affaires, pas seulement l'encaissé.
+export async function getTopCustomers(): Promise<TopCustomersResult> {
+  const since = startOfMonthsAgo(SPENDING_HISTORY_MONTHS - 1);
+  const [invoices, customers] = await Promise.all([
+    fetchAllPages<CustomerInvoice>("/customer_invoices", {
+      filter: [
+        { field: "date", operator: "gteq", value: isoDate(since) },
+        { field: "draft", operator: "eq", value: "false" },
+        { field: "credit_note", operator: "eq", value: "false" },
+      ],
+    }),
+    getCustomersMap(),
+  ]);
+
+  const totals = new Map<string, { amount: number; count: number }>();
+  for (const inv of invoices) {
+    const name = inv.customer ? customers.get(inv.customer.id) ?? `Client #${inv.customer.id}` : "—";
+    const entry = totals.get(name) ?? { amount: 0, count: 0 };
+    entry.amount += toNumber(inv.amount);
+    entry.count += 1;
+    totals.set(name, entry);
+  }
+
+  const total = Array.from(totals.values()).reduce((sum, v) => sum + v.amount, 0);
+
+  const rows: TopCustomerRow[] = Array.from(totals.entries())
+    .map(([customerName, { amount, count }]) => ({
+      customerName,
+      amount,
+      invoiceCount: count,
+      share: total > 0 ? amount / total : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return { rows, total, periodMonths: SPENDING_HISTORY_MONTHS };
 }

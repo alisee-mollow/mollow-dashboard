@@ -75,7 +75,7 @@ export default function CreancesPage() {
       {invoices.error && <ErrorBanner message={invoices.error} />}
       {quotes.error && <ErrorBanner message={quotes.error} />}
 
-      <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+      <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
         <div className="mb-4 flex items-baseline justify-between">
           <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Factures clients en attente de paiement
@@ -91,12 +91,14 @@ export default function CreancesPage() {
             columns={invoiceColumns}
             rows={invoices.data.rows}
             rowKey={(r) => r.id}
-            rowClassName={(r) => (r.ageDays !== null && r.ageDays > 0 ? "bg-red-50 dark:bg-red-950/40" : "")}
+            rowClassName={(r) =>
+              r.ageDays !== null && r.ageDays > 0 ? "bg-[var(--brand-blush)] dark:bg-[var(--brand-burgundy)]/30" : ""
+            }
           />
         )}
       </section>
 
-      <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+      <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
         <div className="mb-4 flex items-baseline justify-between">
           <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             Devis envoyés non acceptés

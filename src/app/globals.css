@@ -1,14 +1,45 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  --background: #f4f4f4;
+  --surface: #ffffff;
   --foreground: #171717;
+
+  /* Palette de marque Mollow (fixe, indépendante du thème clair/sombre) */
+  --brand-burgundy: #590d22;
+  --brand-primary: #c9184a;
+  --brand-rose: #ff4d6d;
+  --brand-pink: #ff8fa3;
+  --brand-blush: #ffd6dd;
+  --brand-sage: #698d85;
+  --brand-mist: #f4f4f4;
+
+  /* Tons sémantiques (texte) — dérivés de la marque, contrôlés pour le contraste AA */
+  --tone-positive: #4a6a62;
+  --tone-negative: #c9184a;
+  --tone-warning: #cc3358;
+
+  /* Nav / accents interactifs */
+  --nav-active-bg: var(--brand-burgundy);
+  --nav-active-fg: #ffffff;
+  --accent: var(--brand-primary);
+  --accent-foreground: #ffffff;
+
+  /* Graphiques */
   --chart-grid: #e4e4e7;
   --chart-axis: #71717a;
   --chart-tooltip-bg: #ffffff;
-  --chart-primary: #2563eb;
-  --chart-positive: #10b981;
-  --chart-negative: #ef4444;
+  --chart-primary: var(--brand-primary);
+  --chart-positive: var(--brand-sage);
+  --chart-negative: var(--brand-primary);
+  /* Rampe catégorielle (dépenses/revenus) : brand pink foncé → clair, puis sauge pour
+     le regroupement "Autres" — voir composants CategoryPieChart / RankingBarChart. */
+  --chart-cat-1: var(--brand-burgundy);
+  --chart-cat-2: var(--brand-primary);
+  --chart-cat-3: var(--brand-rose);
+  --chart-cat-4: var(--brand-pink);
+  --chart-cat-5: var(--brand-blush);
+  --chart-cat-other: var(--brand-sage);
 }
 
 @theme inline {
@@ -21,13 +52,30 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
+    --surface: #18181b;
     --foreground: #ededed;
+
+    --tone-positive: var(--brand-sage);
+    --tone-negative: var(--brand-rose);
+    --tone-warning: var(--brand-pink);
+
+    --nav-active-bg: var(--brand-primary);
+    --nav-active-fg: #ffffff;
+    --accent: var(--brand-rose);
+    --accent-foreground: #171717;
+
     --chart-grid: #27272a;
     --chart-axis: #a1a1aa;
     --chart-tooltip-bg: #18181b;
-    --chart-primary: #60a5fa;
-    --chart-positive: #34d399;
-    --chart-negative: #f87171;
+    --chart-primary: var(--brand-rose);
+    --chart-positive: var(--brand-sage);
+    --chart-negative: var(--brand-rose);
+    --chart-cat-1: var(--brand-blush);
+    --chart-cat-2: var(--brand-pink);
+    --chart-cat-3: var(--brand-rose);
+    --chart-cat-4: var(--brand-primary);
+    --chart-cat-5: var(--brand-burgundy);
+    --chart-cat-other: var(--brand-sage);
   }
 }
 

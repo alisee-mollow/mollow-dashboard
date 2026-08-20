@@ -5,7 +5,7 @@ export function RefreshButton({ onRefresh, loading }: { onRefresh: () => void; l
     <button
       onClick={onRefresh}
       disabled={loading}
-      className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+      className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
     >
       {loading ? "Actualisation…" : "Rafraîchir"}
     </button>

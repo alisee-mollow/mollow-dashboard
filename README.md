@@ -35,10 +35,15 @@ Le token n'est **jamais** exposé au client : il n'est lu que dans les routes AP
 - `/creances` — Factures clients en attente de paiement + devis envoyés non acceptés.
 - `/fournisseurs` — Factures fournisseurs en attente de paiement.
 - `/depenses` — Ventilation des dépenses par catégorie analytique Pennylane (12 derniers
-  mois), basée sur les catégories réellement taguées dans Pennylane (groupe « Type de
-  dépenses »). Les transactions sans catégorie de ce groupe apparaissent en « Non
-  catégorisé ». Le groupe est retrouvé par libellé (pas par id, qui diffère entre
-  sandbox et production) — voir `findExpenseCategoryGroup` dans `src/lib/finance.ts`.
+  mois, camembert + tableau), basée sur les catégories réellement taguées dans
+  Pennylane (groupe « Type de dépenses »). Les transactions sans catégorie de ce
+  groupe apparaissent en « Non catégorisé ».
+- `/revenus` — Même principe côté revenus (groupe « Type de revenus »), complété d'un
+  top clients (classement par total facturé — payé + en attente — sur 12 mois, hors
+  brouillons et avoirs).
+
+Le groupe de catégories est retrouvé par libellé, pas par id (qui diffère entre
+sandbox et production) — voir `findCategoryGroup` dans `src/lib/finance.ts`.
 
 Chaque écran appelle ses routes API au chargement et propose un bouton « Rafraîchir ».
 
@@ -82,7 +87,12 @@ tests contre le sandbox Mollow :
    catégorisation n'est faite dans Pennylane. Une fois catégorisé (groupe « Type de
    dépenses » / « Type de revenus » observés), chaque transaction porte un tableau de
    catégories avec un `weight` (permet un partage entre plusieurs catégories) —
-   `getSpendingByCategory` répartit le montant au prorata des poids.
+   `getBreakdownByCategory` répartit le montant au prorata des poids.
+9. **Le top clients (`/revenus`) et la ventilation par catégorie n'ont pas la même
+   base** : la ventilation se fait sur les transactions bancaires (encaissements,
+   qui peuvent inclure des entrées hors facturation comme un financement), le top
+   clients sur les factures clients (`customer_invoices.amount`). Les deux totaux ne
+   coïncident donc pas nécessairement — signalé dans l'UI.
 
 Points restant des approximations assumées (pas des bugs, mais à garder en tête) :
 
@@ -99,6 +109,20 @@ Points restant des approximations assumées (pas des bugs, mais à garder en tê
 - Les 3 écrans ont été testés en local avec le token sandbox Mollow : données
   cohérentes entre elles (trésorerie, burn, total factures clients identique entre
   la synthèse et l'écran créances).
+
+## Charte graphique Mollow
+
+Couleurs de marque appliquées via variables CSS (`src/app/globals.css`) : `#590d22`
+(burgundy), `#c9184a` (primaire), `#ff4d6d`, `#ff8fa3`, `#ffd6dd` (rose clair),
+`#698d85` (sauge), `#f4f4f4` (fond). Utilisées pour la nav, les boutons, les tons des
+cartes KPI (positif = sauge, négatif = burgundy/primaire) et les graphiques.
+
+Note d'accessibilité : cette palette est en grande partie une seule famille de teinte
+(rose, du foncé au clair) plus une teinte sauge — elle ne passe pas la validation
+« palette catégorielle » standard (séparation de teinte insuffisante pour un daltonien
+entre les nuances de rose). Pour les camemberts par catégorie, c'est compensé par des
+étiquettes directes sur les parts + une légende systématique + le tableau détaillé en
+dessous (qui ne dépend jamais de la couleur seule) — voir `CategoryPieChart.tsx`.
 
 ## Déploiement (Vercel)
 

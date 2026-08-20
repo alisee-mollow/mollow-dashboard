@@ -73,14 +73,14 @@ export default function SynthesePage() {
             />
           </div>
 
-          <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+          <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
             <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Trésorerie — 12 derniers mois
             </h2>
             <TreasuryChart data={data.monthly} />
           </section>
 
-          <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+          <section className="rounded-xl border border-zinc-200 bg-[var(--surface)] p-5 dark:border-zinc-800">
             <h2 className="mb-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Encaissé vs dépensé, mois par mois
             </h2>
