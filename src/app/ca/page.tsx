@@ -41,13 +41,18 @@ export default function CaPage() {
 
       {data && !error && (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard
-              label="CA facturé"
+              label="CA facturé TTC"
               value={formatEUR(data.total)}
               hint={yoyLabel(data.total, data.previousYearTotal) ?? `Année ${data.year}`}
             />
-            <KpiCard label="CA moyen par mois" value={formatEUR(data.avgMonthlyCa)} hint={`Année ${data.year}`} />
+            <KpiCard
+              label="CA facturé HT"
+              value={formatEUR(data.totalHT)}
+              hint={yoyLabel(data.totalHT, data.previousYearTotalHT) ?? `Année ${data.year}`}
+            />
+            <KpiCard label="CA moyen par mois (TTC)" value={formatEUR(data.avgMonthlyCa)} hint={`Année ${data.year}`} />
             <KpiCard label="Mois facturés" value={String(data.monthly.length)} hint={`Année ${data.year}`} />
           </div>
 
@@ -62,7 +67,9 @@ export default function CaPage() {
             Basé sur les factures clients émises (hors brouillons), avoirs déduits. Le CA
             facturé diffère de l&apos;encaissé (voir l&apos;écran Revenus) : une facture peut être
             émise sans être encore payée, ou payée sur un mois différent de celui de son
-            émission.
+            émission. Le HT est calculé à partir du détail de chaque facture (montant − TVA),
+            fiable puisque basé sur des données de facturation — contrairement aux écrans
+            Dépenses/Revenus (basés sur les transactions bancaires, qui ne portent pas de TVA).
           </p>
         </>
       )}

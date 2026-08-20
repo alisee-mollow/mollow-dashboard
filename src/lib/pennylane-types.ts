@@ -64,7 +64,8 @@ export interface CustomerInvoice {
   id: number;
   invoice_number: string;
   label: string | null;
-  amount: string;
+  amount: string; // TTC, en euros
+  tax: string; // montant de TVA, en euros (amount - tax = HT, vérifié en sandbox)
   currency: string;
   paid: boolean;
   status: CustomerInvoiceStatus;

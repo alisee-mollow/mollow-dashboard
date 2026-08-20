@@ -60,7 +60,15 @@ Le token n'est **jamais** exposé au client : il n'est lu que dans les routes AP
   des factures clients, avoirs déduits), délibérément découplé de la trésorerie et
   des encaissements bancaires — une facture peut être émise sans être encore payée,
   ou payée un mois différent de celui de son émission. Comparaison à l'année
-  précédente sur la même période.
+  précédente sur la même période, **TTC et HT** (HT = `amount - tax`, tous deux
+  confirmés en euros par facture, cf. vérifications ci-dessous).
+
+**Pourquoi pas de total HT sur Dépenses/Revenus ?** Ces deux écrans sont basés sur
+les transactions bancaires, qui ne portent aucune ventilation TVA (contrairement aux
+factures). Une approximation par taux de TVA standard serait fausse pour une bonne
+part des dépenses (les salaires, ~56 % du total dépensé, ne portent aucune TVA) —
+demandé et tranché avec Mollow : le HT reste réservé à `/ca`, qui est fiable car basé
+sur les factures.
 
 Synthèse, Dépenses, Revenus et Chiffre d'affaires ont un sélecteur d'année civile
 (‹ AAAA ›, borné à `MIN_YEAR` dans `YearSwitcher.tsx`) : les graphiques et

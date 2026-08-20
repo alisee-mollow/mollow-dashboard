@@ -704,8 +704,10 @@ export interface MonthlyCaPoint {
 
 export interface AccrualRevenueData {
   year: number;
-  total: number;
-  previousYearTotal: number; // même période (YTD si année en cours), année précédente
+  total: number; // TTC
+  totalHT: number;
+  previousYearTotal: number; // même période (YTD si année en cours), année précédente, TTC
+  previousYearTotalHT: number;
   avgMonthlyCa: number;
   monthly: MonthlyCaPoint[];
   previousYearMonthly: MonthlyCaPoint[]; // mêmes mois, année `year - 1`
@@ -750,6 +752,12 @@ export async function getAccrualRevenue(year: number): Promise<AccrualRevenueDat
     return map;
   }
 
+  // HT = amount - tax, tous deux confirmés en euros (contrairement à
+  // currency_amount_before_tax, qui reste dans la devise de la facture).
+  function sumHT(invs: CustomerInvoice[]): number {
+    return invs.reduce((sum, inv) => sum + (toNumber(inv.amount) - toNumber(inv.tax)), 0);
+  }
+
   const byMonth = aggregateCaByMonth(invoices);
   const previousYearByMonth = aggregateCaByMonth(previousYearInvoices);
 
@@ -770,6 +778,17 @@ export async function getAccrualRevenue(year: number): Promise<AccrualRevenueDat
   const total = monthly.reduce((sum, m) => sum + m.ca, 0);
   const previousYearTotal = previousYearMonthly.reduce((sum, m) => sum + m.ca, 0);
   const avgMonthlyCa = monthly.length > 0 ? total / monthly.length : 0;
+  const totalHT = sumHT(invoices);
+  const previousYearTotalHT = sumHT(previousYearInvoices);
 
-  return { year: displayYear, total, previousYearTotal, avgMonthlyCa, monthly, previousYearMonthly };
+  return {
+    year: displayYear,
+    total,
+    totalHT,
+    previousYearTotal,
+    previousYearTotalHT,
+    avgMonthlyCa,
+    monthly,
+    previousYearMonthly,
+  };
 }
