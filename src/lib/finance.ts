@@ -16,7 +16,7 @@ const BURN_AVERAGE_MONTHS = 6;
 // Horizon maximal de la projection de trésorerie affichée sur la courbe.
 const MAX_PROJECTION_MONTHS = 12;
 
-function toNumber(value: string | null | undefined): number {
+export function toNumber(value: string | null | undefined): number {
   if (!value) return 0;
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -26,7 +26,7 @@ function monthKey(dateStr: string): string {
   return dateStr.slice(0, 7); // "YYYY-MM"
 }
 
-function isoDate(d: Date): string {
+export function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
@@ -40,7 +40,14 @@ export function parseYear(url: string): number {
   return Number.isInteger(year) && year > 2000 ? year : currentYear();
 }
 
-function startOfYear(year: number): Date {
+// Montant HT d'une facture ou d'un devis = amount − tax, tous deux confirmés en
+// euros (contrairement à currency_amount_before_tax, qui reste dans la devise du
+// document).
+export function amountHT(doc: { amount: string; tax: string }): number {
+  return toNumber(doc.amount) - toNumber(doc.tax);
+}
+
+export function startOfYear(year: number): Date {
   return new Date(Date.UTC(year, 0, 1));
 }
 
@@ -278,9 +285,12 @@ async function buildNameMap(items: { id: number; name: string }[]): Promise<Map<
   return new Map(items.map((i) => [i.id, i.name]));
 }
 
+export async function getCustomers(): Promise<Customer[]> {
+  return fetchAllPages<Customer>("/customers");
+}
+
 export async function getCustomersMap(): Promise<Map<number, string>> {
-  const customers = await fetchAllPages<Customer>("/customers");
-  return buildNameMap(customers);
+  return buildNameMap(await getCustomers());
 }
 
 export async function getSuppliersMap(): Promise<Map<number, string>> {
@@ -752,10 +762,8 @@ export async function getAccrualRevenue(year: number): Promise<AccrualRevenueDat
     return map;
   }
 
-  // HT = amount - tax, tous deux confirmés en euros (contrairement à
-  // currency_amount_before_tax, qui reste dans la devise de la facture).
   function sumHT(invs: CustomerInvoice[]): number {
-    return invs.reduce((sum, inv) => sum + (toNumber(inv.amount) - toNumber(inv.tax)), 0);
+    return invs.reduce((sum, inv) => sum + amountHT(inv), 0);
   }
 
   const byMonth = aggregateCaByMonth(invoices);

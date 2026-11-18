@@ -25,10 +25,13 @@ Voir [.env.local.example](.env.local.example).
 
 - `PENNYLANE_API_TOKEN` — Company API Token Pennylane (Paramètres > API). En développement,
   utiliser le token du bac à sable (Profil > Test environment > Create my sandbox).
+- `HUBSPOT_ACCESS_TOKEN` — jeton d'application privée HubSpot, en lecture seule
+  (`crm.objects.companies.read`, `crm.objects.owners.read`). Utilisé uniquement par
+  `/commercial`.
 - `DASHBOARD_PASSWORD` — si définie, protège l'app entière par une authentification HTTP
   basique (mot de passe partagé). À définir en production si l'app est accessible publiquement.
 
-Le token n'est **jamais** exposé au client : il n'est lu que dans les routes API
+Les tokens ne sont **jamais** exposés au client : il n'est lu que dans les routes API
 (`src/app/api/**/route.ts` et `src/lib/*.ts`, tous marqués `import "server-only"`).
 
 ## Écrans
@@ -62,6 +65,17 @@ Le token n'est **jamais** exposé au client : il n'est lu que dans les routes AP
   ou payée un mois différent de celui de son émission. Comparaison à l'année
   précédente sur la même période, **TTC et HT** (HT = `amount - tax`, tous deux
   confirmés en euros par facture, cf. vérifications ci-dessous).
+- `/commercial` — Facturation par commercial : devis et factures de l'année, filtrables
+  par commercial (Antonin par défaut), KPI (devis envoyés, HT signé, taux de
+  transformation devis → facture, HT facturé, HT encaissé) et export CSV de chaque
+  bloc avec l'ID Pennylane et l'ID d'entreprise HubSpot. **Pennylane n'expose aucun
+  champ auteur** sur les devis/factures (ni `created_by`, ni `custom_fields` rempli —
+  vérifié sur tous les documents) : chaque document est attribué au propriétaire de
+  l'entreprise HubSpot correspondant au client, rapprochée par nom normalisé (formes
+  juridiques et accents ignorés) puis par domaine e-mail. Les clients non rattachés
+  (aucune entreprise, entreprise sans propriétaire ou propriétaires contradictoires)
+  sont listés en bas de page pour correction dans HubSpot. Encaissé HT =
+  HT − `remaining_amount_without_tax` (vérifié : égal au HT si impayée, 0 si payée).
 
 **Pourquoi pas de total HT sur Dépenses/Revenus ?** Ces deux écrans sont basés sur
 les transactions bancaires, qui ne portent aucune ventilation TVA (contrairement aux
@@ -206,5 +220,5 @@ dessous (qui ne dépend jamais de la couleur seule) — voir `CategoryPieChart.t
 
 1. Pousser le repo sur GitHub.
 2. Importer le projet sur [Vercel](https://vercel.com/new).
-3. Renseigner les variables d'environnement `PENNYLANE_API_TOKEN` (token de production)
-   et `DASHBOARD_PASSWORD` dans les paramètres du projet Vercel — jamais dans le repo.
+3. Renseigner les variables d'environnement `PENNYLANE_API_TOKEN` (token de production),
+   `HUBSPOT_ACCESS_TOKEN` et `DASHBOARD_PASSWORD` dans les paramètres du projet Vercel — jamais dans le repo.

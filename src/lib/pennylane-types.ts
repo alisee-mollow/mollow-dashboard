@@ -74,7 +74,9 @@ export interface CustomerInvoice {
   draft: boolean;
   credit_note: boolean;
   remaining_amount_with_tax: string | null;
+  remaining_amount_without_tax: string | null; // restant dû HT, en euros (vérifié : = HT si impayée, 0 si payée)
   customer: Ref | null;
+  quote: Ref | null; // devis d'origine, quand la facture a été créée depuis un devis
 }
 
 export type QuoteStatus = "pending" | "accepted" | "denied" | "invoiced" | "expired";
@@ -83,7 +85,8 @@ export interface Quote {
   id: number;
   quote_number: string;
   label: string | null;
-  amount: string;
+  amount: string; // TTC, en euros
+  tax: string; // montant de TVA, en euros
   currency: string;
   status: QuoteStatus;
   date: string | null; // date d'émission / d'envoi
@@ -94,6 +97,7 @@ export interface Quote {
 export interface Customer {
   id: number;
   name: string;
+  emails?: string[];
 }
 
 export interface Supplier {

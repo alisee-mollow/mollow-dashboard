@@ -9,6 +9,7 @@ const links = [
   { href: "/depenses", label: "Dépenses" },
   { href: "/revenus", label: "Revenus" },
   { href: "/ca", label: "Chiffre d'affaires" },
+  { href: "/commercial", label: "Facturation par commercial" },
 ];
 
 export function Nav() {
